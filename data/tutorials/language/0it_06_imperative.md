@@ -35,7 +35,7 @@ Imperative and functional programming both have unique merits; OCaml allows comb
 
 When you use `let … = …` to bind a value to a name, this name-value binding is [immutable](https://en.wikipedia.org/wiki/Immutable_object): It is impossible to _mutate_ (which is a fancy term for “change”, “update”, or “modify”) the value assigned to the name.
 
-In the following sections, we introduce OCaml's language features for dealing with _mutable_ state.
+In the following sections, we introduce OCaml's language features for dealing with _mutable_ states.
 
 ## References
 
@@ -52,7 +52,7 @@ val a : int ref = {contents = 0}
 ```
 
 Here is what happens in this example:
-1. The value `{ contents = 0 }` is bound to the name `a`. This is a normal definition. Like any other definition it is immutable. However, the value `0` in the `contents` field of `a` is _mutable_, i.e. it can be updated.
+1. The value `{ contents = 0 }` is bound to the name `a`. This is a normal definition. Like any other definition, it is immutable. However, the value `0` in the `contents` field of `a` is _mutable_, i.e. it can be updated.
 3. The _assignment_ operator `:=` is used to update the mutable value inside `a` from `0` to `1`.
 4. The _dereference_ operator `!` reads the contents of the mutable value inside `a`.
 
@@ -146,22 +146,28 @@ In contrast to references, there is no special syntax to dereference a mutable r
 
 In OCaml, references are records with a single mutable field:
 ```ocaml
-# #show ref;;
-external ref : 'a -> 'a ref = "%makemutable"
+# #show_type ref;;
 type 'a ref = { mutable contents : 'a; }
 ```
 
 The type `'a ref` is a record with a single field `contents` which is marked with the `mutable` keyword.
 
-The line `external ref : 'a -> 'a ref = "%makemutable"` means the function `ref` is not written in OCaml, but that is an implementation detail we do not care about in this tutorial. If interested, check the [Calling C Libraries](/docs/calling-c-libraries) tutorial to learn how to use the foreign function interface.
-
 Since references are single field records, we can define functions `assign` and `deref` using the mutable record field update syntax:
 ```ocaml
-# let assign a x = a.contents <- x;;
+# let create v = { contents = v };;
+val create : 'a -> 'a ref = <fun>
+
+# let assign a v = a.contents <- v;;
 val assign : 'a ref -> 'a -> unit = <fun>
 
 # let deref a = a.contents;;
 val deref : 'a ref -> 'a = <fun>
+
+# let a = create 0;;
+val a : int ref = {contents = 0}
+
+# deref a;;
+- : int = 0
 
 # assign a 2;;
 - : unit = ()
@@ -170,8 +176,10 @@ val deref : 'a ref -> 'a = <fun>
 - : int = 2
 ```
 
-The function `assign` does the same as the operator `( := )`, while the function `deref` does the same as the `( ! )` operator.
-
+The functions:
+* `create` does the same as the `ref` function provided by the standard library
+* `assign` does the same as the `( := )` operator
+* `deref` does the same as the `( ! )` operator.
 
 ## Arrays
 
@@ -193,15 +201,14 @@ val a : int array = [|2; 3; 4; 5; 6; 7; 8|]
 
 The arrow symbol `<-` is used to update an array element at a given index. The array index access syntax `a.(i)`, where `a` is a value of type `array` and `i` is an integer, stands for either
 
-* the array location to update (when on the left hand side of `<-`), or
-* the cell's content (when on the right hand side of `<-`).
+* the array location to update (when on the left-hand side of `<-`), or
+* the cell's content (when on the right-hand side of `<-`).
 
-For more a more detailed discussion of Arrays, see the [Arrays](/docs/arrays) tutorial.
+For a more detailed discussion on arrays, see the [Arrays](/docs/arrays) tutorial.
 
 ## Byte Sequences
 
-The `bytes` type in OCaml represents a mutable sequence of bytes. Each element in a `bytes` sequence is a character, but since characters in OCaml are represented as 8-bit bytes, a `bytes` value can effectively manage any sequence of bytes.
-
+The `bytes` type in OCaml represents a fixed-length mutable sequence of bytes. Each element in a value of type `bytes` is an 8-bit word (i.e. a byte). Since characters in OCaml are represented using eight bits, `bytes` values are mutable `char` sequences. Like arrays, byte sequences support indexed access.
 ```ocaml
 # let b = Bytes.of_string "abcdefghijklmnopqrstuvwxyz";;
 val b : bytes = Bytes.of_string "abcdefghijklmnopqrstuvwxyz"
@@ -218,9 +225,11 @@ val b : bytes = Bytes.of_string "abcdefghijklmnopqrstuvwxyz"
 
 Byte sequences can be created from `string` values using the function `Bytes.of_string`. Individual elements in the sequence can be updated or read by their index using `Bytes.set`, and, respectively `Bytes.get`.
 
-You can think of byte sequences as
+You can think of byte sequences as either:
 * updatable strings that can't be printed, or
-* `char array`s without syntactic sugar for indexed read and update.
+* `char` arrays without syntactic sugar for indexed read and update.
+
+**Note**: the `bytes` type uses a much more compact memory representation than `char array`. As of writing this tutorial, there is a factor 8 between `bytes` and `char array`. The former should always be preferred, except when `array` is required by polymorphic functions handling arrays.
 
 <!-- FIXME: link to a dedicated Byte Sequences tutorial -->
 
@@ -234,7 +243,7 @@ We use two functions from the `Unix` module to read/update attributes of the ter
 * `tcgetattr stdin TCSAFLUSH` read and return them as a record (this is similar to `deref`)
 * `tcsetattr stdin TCSAFLUSH` update them (this is similar to `assign`)
 
-These attributes need to be set correctly (i.e. turn of echoing and disable canonical mode) in order to do the reading the way we want. The logic is the same in both implementations:
+These attributes need to be set correctly (i.e. turn off echoing and disable canonical mode) in order to do the reading the way we want. The logic is the same in both implementations:
 1. Read the terminal attributes
 1. Set the terminal attributes
 1. Wait until a key is pressed, read it as a character
@@ -282,11 +291,24 @@ In the second call to `tcsetattr`, we restore the terminal attributes to their i
 
 ## Imperative Control Flow
 
-OCaml provides a sequence operator `;` that allows to chain expressions, as well as `for` loops and `while` loops which execute a block of code repeatedly.
+OCaml provides a sequence operator `;` that allows chaining expressions, as well as `for` loops and `while` loops which execute a block of code repeatedly.
 
 ### Sequence Operator
 
-The `;` operator is known as the _sequence_ operator. It allows you to evaluate multiple expressions in order, with the value of the last expression being the value of the entire sequence.
+**`let … in`**
+
+```ocaml
+# let () = print_string "This is" in print_endline " really Disco!";;
+This is really Disco!
+- : unit = ()
+```
+
+Using the `let … in` construct means two things:
+* Names may be bound (in the example, no name is bound since the )
+* Side effects take place in sequence, bound expression (here `print_string "This is"`) is evaluated first, and referring expression (here `print_endline " really Disco!"`) is evaluated second.
+
+**Semicolon**
+The single semicolon `;` operator is known as the _sequence_ operator. It allows you to evaluate multiple expressions in order, with the value of the last expression being the value of the entire sequence.
 
 The values of any previous expressions are discarded. Thus, it makes sense to use expressions with side effects, except for the last expression of the sequence which could be free of side effects.
 
@@ -339,7 +361,7 @@ Warning 10 [non-unit-statement]: this expression should have type unit.
 
 When you use the `downto` keyword (instead of the `to` keyword), the counter decreases on every iteration of the loop.
 
-For example, `for` loops are convenient to iterate over and modify arrays:
+For example, `for` loops are convenient for iterating over and modifying arrays:
 ```ocaml
 # let a = [| 2; 3; 4; 5; 6; 7; 8 |];;
 val a : int array = [|2; 3; 4; 5; 6; 7; 8|]
@@ -403,9 +425,9 @@ This `while` loop echoes characters typed on the keyboard. When the ASCII `Escap
 
 ## Recommendations for Mutable State and Side Effects
 
-Functional and imperative programming styles are often used together. However, not all ways of combining them give good results. We show some patterns and anti-patterns relating to mutable state and side effects in this section.
+Functional and imperative programming styles are often used together. However, not all ways of combining them give good results. We show some patterns and anti-patterns relating to mutable states and side effects in this section.
 
-### Good: Function-Encapsulated Mutability
+### Good: Function-encapsulated Mutability
 
 Here is a function that computes the sum of an array of integers.
 ```ocaml
@@ -425,7 +447,7 @@ The function `sum` is written in imperative style, using mutable data structures
 Some applications maintain some state while they are running. Here are a couple of examples:
 - A Read-Eval-Print-Loop (REPL). The state is the environment where values are bound to names. In OCaml, the environment is append-only, but some languages allow replacing or removing name-value bindings.
 - A server for a stateful protocol. Each session has a state, the global state consists of all the session states.
-- A text editor. The state includes the most recent commands (to allow undo), state of any open files, the settings, and the state of the UI.
+- A text editor. The state includes the most recent commands (to allow undo), the state of any open files, the settings, and the state of the UI.
 - A cache.
 
 The following is a toy line editor, using the `get_char` function [defined earlier](#example-getchar-function). It waits for characters on standard input and exits on end-of-file, carriage return or newline. Otherwise, if the character is printable, it prints it and records it in a mutable list used as a stack. If the character is the delete code, the stack is popped and the last printed character is erased.
@@ -459,7 +481,7 @@ val loop : char list ref -> 'a = <fun>
 ```
 
 This example illustrates the following:
-- The functions `record_char` and `remove_char` neither update the state nor produce side effects. Instead, they each return a pair of values consisting of a string to print, and the next state `new_state`.
+- The functions `record_char` and `remove_char` neither update the state nor produce side effects. Instead, they each return a pair of values consisting of a string to print and the next state `new_state`.
 - I/O and state update side effects happen inside the `loop` function
 - The state is passed as a parameter to the `loop` function
 
@@ -471,11 +493,8 @@ This is a possible way to handle application-wide state. As in the [Function-Enc
 
 Let's imagine you store angles as fractions of the circle in 8-bit unsigned integers, storing them as `char` values. In this system, 64 is 90 degrees, 128 is 180 degrees, 192 is 270 degrees, 256 is full circle and so on. If you need to compute cosine on those values, an implementation might look like this:
 ```ocaml
-# let pi = 3.14159265358979312 /. 128.0;;
-pi : float = 0.0245436926061702587
-
 # let char_cos c =
-    c |> int_of_char |> float_of_int |> ( *. ) (pi /. 128.0) |> cos;;
+    c |> int_of_char |> float_of_int |> ( *. ) (Float.pi /. 128.0) |> cos;;
 val char_cos : char -> float = <fun>
 ```
 
@@ -490,7 +509,7 @@ val char_cos : char -> float = <fun>
 
 ### Good: Memoization
 
-The [memoization](https://en.wikipedia.org/wiki/Memoization) technique relies on the same idea as the example from the previous section: look up results from a table of previously computed values.
+The [memoization](https://en.wikipedia.org/wiki/Memoization) technique relies on the same idea as the example from the previous section: lookup results from a table of previously computed values.
 
 However, instead of precomputing everything, memoization uses a cache that is populated when calling the function. Either, the provided parameters
 * are found in the cache (it is a hit) and the stored result is returned, or they
@@ -502,7 +521,7 @@ You can find a concrete example of memoization and a more in-depth explanation i
 
 ### Good: Functional by Default
 
-By default, OCaml programs should be written in a mostly functional style. This constitutes trying to avoid side-effects where possible, and relying on immutable state instead of mutable state.
+By default, OCaml programs should be written in a mostly functional style. This constitutes trying to avoid side effects where possible and relying on immutable data instead of mutable state.
 
 It is possible to use an imperative programming style without losing the benefits of type and memory safety. However, it doesn't usually make sense to only program in an imperative style. Not using functional programming idioms at all would result in non-idiomatic OCaml code.
 
@@ -515,7 +534,7 @@ A module may expose or encapsulate a state in several different ways:
 1. It depends: Only expose state initialisation, this implies there only is a single state
 1. Bad: Mutable state with no explicit initialisation function or no name referring to the mutable state
 
-For example, the [`Hashtbl`](/api/Hashtbl.html) module provides an interface of the first kind. It has the type `Hashtbl.t` representing mutable data, it also exposes `create`, `clear` and `reset` functions. That the `clear` and `reset` functions return `unit` is a strong signal to the reader that they perform the side-effect of updating the mutable data.
+For example, the [`Hashtbl`](/api/Hashtbl.html) module provides an interface of the first kind. It has the type `Hashtbl.t` representing mutable data, it also exposes `create`, `clear` and `reset` functions. The `clear` and `reset` functions return `unit` is a strong signal to the reader that they perform the side-effect of updating the mutable data.
 
 ```ocaml
 #show Hashtbl.t;;
@@ -574,7 +593,7 @@ GOTCHA: This is the dual of the previous anti-pattern. “Mutable in disguise”
 
 -->
 
-### Bad: Undocumented Side Effect
+### Bad: Undocumented Side Effects
 
 Consider this code:
 ```ocaml
@@ -604,19 +623,19 @@ Consider the following code:
 # let id_print s = print_string (s ^ " "); s;;
 val id_print : string -> string = <fun>
 
-# let s = Printf.sprintf "%s %s %s " (id_print "monday") (id_print "tuesday")  (id_print "wednesday");;
-wednesday tuesday monday val s : string = "monday tuesday wednesday "
+# let s = Printf.sprintf "%s %s %s" (id_print "Monday") (id_print "Tuesday")  (id_print "Wednesday");;
+Wednesday Tuesday Monday val s : string = "Monday Tuesday Wednesday "
 ```
 
 The function `id_print` returns its input unchanged. However, it has a side effect: it first prints the string it receives as an argument.
 
-In the second line, we apply `id_print` to the arguments `"monday"`, `"tuesday"`, `"wednesday"`, respectively and apply `Printf.sprintf "%s %s %s "` to them.
+In the second line, we apply `id_print` to the arguments `"Monday"`, `"Tuesday"`, and `"Wednesday"`. Then `Printf.sprintf "%s %s %s "` is applied to the results.
 
-Since the order of evaluation for function arguments in OCaml is not explicitly defined, the order in which the `id_print` side effects take place is unreliable. In this example, the arguments are evaluated from right to left, but this could change on future compiler releases.
+Since the order of evaluation for function arguments in OCaml is not explicitly defined, the order in which the `id_print` side effects take place is unreliable. In this example, the arguments are evaluated from right to left, but this could change in future compiler releases.
 
 There are several means to ensure that computation takes place in a specific order.
 
-You can use the use the sequence operator `;` to execute expressions in a particular order:
+You can use the sequence operator `;` to execute expressions in a particular order:
 ```ocaml
 # print_endline "ha"; print_endline "ho";;
 ha
@@ -634,15 +653,4 @@ hu
 
 ## Conclusion
 
-Mutable state as such is neither good or bad. For the cases where mutable state enables a significantly simpler implementation, OCaml provides fine tools to deal with mutable state. We looked at references, mutable record fields, arrays, byte sequences, as well as imperative control flow expressions like `for` and `while` loops. Finally, we discussed several examples of recommended and discouraged use of side effects and mutable state.
-
-<!--
-References
-
-* https://www.lri.fr/~filliatr/hauteur/pres-hauteur.pdf
-* https://medium.com/neat-tips-tricks/ocaml-continuation-explained-3b73839b679f
-* https://discuss.ocaml.org/t/what-is-the-use-of-continuation-passing-style-cps/4491/7
-* https://www.pathsensitive.com/2019/07/the-best-refactoring-youve-never-heard.html
-* https://link.springer.com/chapter/10.1007/11783596_2
-
--->
+A mutable state as such is neither good nor bad. For the cases where a mutable state enables a significantly simpler implementation, OCaml provides fine tools to deal with it. We looked at references, mutable record fields, arrays, byte sequences, as well as imperative control flow expressions like `for` and `while` loops. Finally, we discussed several examples of recommended and discouraged use of side effects and mutable states.
